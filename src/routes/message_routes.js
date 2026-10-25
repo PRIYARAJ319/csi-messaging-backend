@@ -5,7 +5,8 @@ const {
     sendmessage,
     getmessages,
     editmessage,
-    deletemessage
+    deletemessage,
+    addreaction
 } = require('../controllers/message_controller');
 
 router.post('/', sendmessage);
@@ -15,6 +16,8 @@ router.get('/', getmessages);
 router.patch('/:id', editmessage);
 
 router.delete('/:id', deletemessage);
+
+router.post('/:id/reactions', addreaction);
 
 module.exports = router;
 

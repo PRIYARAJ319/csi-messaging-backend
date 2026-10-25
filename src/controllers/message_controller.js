@@ -56,7 +56,7 @@ const editmessage = async (req, res) => {
     try {
         const { content } = req.body;
 
-        if (!content || !content.trim()) {
+        if (typeof content !== 'string' || !content.trim()) {
             return res.status(400).json({
                 message: 'Message content is required'
             });
@@ -75,7 +75,7 @@ const editmessage = async (req, res) => {
                 isedited: true
             },
             {
-                new: true,
+                returnDocument: 'after',
                 runValidators: true
             }
         );
@@ -134,10 +134,61 @@ const deletemessage = async (req, res) => {
     }
 };
 
+const addreaction = async (req, res) => {
+    try {
+        const { user, emoji } = req.body;
+
+        if (!user || !emoji || !emoji.trim()) {
+            return res.status(400).json({
+                message: 'user and emoji are required'
+            });
+        }
+
+        const existingmessage = await message.findById(req.params.id);
+
+        if (!existingmessage) {
+            return res.status(404).json({
+                message: 'Message not found'
+            });
+        }
+
+        const existingreaction = existingmessage.reactions.find(
+            (reaction) => reaction.user.toString() === user
+        );
+
+        if (existingreaction) {
+            existingreaction.emoji = emoji.trim();
+        } else {
+            existingmessage.reactions.push({
+                user,
+                emoji: emoji.trim()
+            });
+        }
+
+        await existingmessage.save();
+
+        return res.status(200).json({
+            message: 'Reaction added successfully',
+            data: existingmessage
+        });
+    } catch (error) {
+        if (error.name === 'CastError') {
+            return res.status(400).json({
+                message: 'Invalid message or user ID'
+            });
+        }
+
+        return res.status(500).json({
+            message: 'Failed to add reaction',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     sendmessage,
     getmessages,
     editmessage,
-    deletemessage
+    deletemessage,
+    addreaction
 };
-
