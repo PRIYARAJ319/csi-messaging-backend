@@ -1,24 +1,37 @@
+
 const message = require('../models/message');
 
 const sendmessage = async (req, res) => {
     try {
         const { sender, content, channel, receiver, replyto } = req.body;
 
-        if (!sender || !content || (!channel && !receiver)) {
+        if (!sender || !content || !content.trim()) {
             return res.status(400).json({
-                message: 'sender, content, and either channel or receiver are required'
+                message: 'Sender and content are required'
+            });
+        }
+
+        if (content.trim().length > 2000) {
+            return res.status(400).json({
+                message: 'Message cannot exceed 2000 characters'
+            });
+        }
+
+        if (!channel && !receiver) {
+            return res.status(400).json({
+                message: 'Channel or receiver is required'
             });
         }
 
         if (channel && receiver) {
             return res.status(400).json({
-                message: 'A message cannot have both channel and receiver'
+                message: 'Message cannot have both channel and receiver'
             });
         }
 
         const newmessage = await message.create({
             sender,
-            content,
+            content: content.trim(),
             channel: channel || null,
             receiver: receiver || null,
             replyto: replyto || null
@@ -29,6 +42,13 @@ const sendmessage = async (req, res) => {
             data: newmessage
         });
     } catch (error) {
+        if (error.name === 'ValidationError' || error.name === 'CastError') {
+            return res.status(400).json({
+                message: 'Invalid message data',
+                error: error.message
+            });
+        }
+
         return res.status(500).json({
             message: 'Failed to send message',
             error: error.message
@@ -37,11 +57,38 @@ const sendmessage = async (req, res) => {
 };
 
 const getmessages = async (req, res) => {
+
+    console.log('NEW GETMESSAGES CONTROLLER RUNNING');
+    
     try {
-        const messages = await message.find().sort({ createdAt: -1 });
+        const search = (req.query.search || '').trim();
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 5));
+        const skip = (page - 1) * limit;
+
+        const filter = {};
+
+        if (search) {
+            const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            filter.content = {
+                $regex: safeSearch,
+                $options: 'i'
+            };
+        }
+
+        const totalmessages = await message.countDocuments(filter);
+
+        const messages = await message.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
         return res.status(200).json({
-            count: messages.length,
+            totalmessages,
+            currentpage: page,
+            totalpages: Math.ceil(totalmessages / limit),
+            limit,
             data: messages
         });
     } catch (error) {
@@ -62,7 +109,7 @@ const editmessage = async (req, res) => {
             });
         }
 
-        if (content.length > 2000) {
+        if (content.trim().length > 2000) {
             return res.status(400).json({
                 message: 'Message cannot exceed 2000 characters'
             });
@@ -94,6 +141,13 @@ const editmessage = async (req, res) => {
         if (error.name === 'CastError') {
             return res.status(400).json({
                 message: 'Invalid message ID'
+            });
+        }
+
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                message: 'Invalid message data',
+                error: error.message
             });
         }
 
@@ -138,9 +192,9 @@ const addreaction = async (req, res) => {
     try {
         const { user, emoji } = req.body;
 
-        if (!user || !emoji || !emoji.trim()) {
+        if (!user || typeof emoji !== 'string' || !emoji.trim()) {
             return res.status(400).json({
-                message: 'user and emoji are required'
+                message: 'User and emoji are required'
             });
         }
 
@@ -153,7 +207,7 @@ const addreaction = async (req, res) => {
         }
 
         const existingreaction = existingmessage.reactions.find(
-            (reaction) => reaction.user.toString() === user
+            reaction => reaction.user.toString() === user
         );
 
         if (existingreaction) {
@@ -172,9 +226,10 @@ const addreaction = async (req, res) => {
             data: existingmessage
         });
     } catch (error) {
-        if (error.name === 'CastError') {
+        if (error.name === 'CastError' || error.name === 'ValidationError') {
             return res.status(400).json({
-                message: 'Invalid message or user ID'
+                message: 'Invalid message or user data',
+                error: error.message
             });
         }
 
